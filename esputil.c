@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <arpa/inet.h>
 
 #ifdef _WIN32  // Windows includes
 #include <direct.h>
