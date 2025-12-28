@@ -3,3 +3,4 @@
 *.obj
 *.o
 *.dSYM
+*trb2sdk*

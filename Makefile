@@ -4,6 +4,8 @@ BINDIR ?= .
 CWD ?= $(realpath $(CURDIR))
 DOCKER = docker run $(DA) --rm -e Tmp=. -e WINEDEBUG=-all -v $(CWD):$(CWD) -w $(CWD)
 SERIAL_PORT ?= /dev/ttyUSB0
+MIPS_CC = binutils/toolchain-mips_24kc_gcc-8.4.0_musl/bin/mips-openwrt-linux-gcc
+MIPS_BIN_EXE = esputil-mips
 
 all: $(PROG)
 
@@ -18,3 +20,6 @@ wintest: esputil.exe
 
 clean:
 	rm -rf esputil $(PROG) *.dSYM *.o *.obj _CL* *.exe
+
+mips_compile:
+	$(MIPS_CC) $(CFLAGS) $? -o $(BINDIR)/$(MIPS_BIN_EXE) esputil.c
