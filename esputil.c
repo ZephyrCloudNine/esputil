@@ -267,20 +267,6 @@ static uint8_t checksum(const uint8_t *buf, size_t len) {
   return checksum2(0xef, buf, len);
 }
 
-// Add this for the Flash Data command (op 3)
-static uint32_t checksum32(const uint8_t *buf, size_t len) {
-  uint32_t res = 0xef;
-  for (size_t i = 0; i < len; i += 4) {
-    // Manually build LE word: This is the secret for Big-Endian routers!
-    uint32_t val = (uint32_t)buf[i] | 
-                   (uint32_t)buf[i + 1] << 8 | 
-                   (uint32_t)buf[i + 2] << 16 | 
-                   (uint32_t)buf[i + 3] << 24;
-    res ^= val;
-  }
-  return res;
-}
-
 #ifdef _WIN32  // Windows - specific routines
 static void sleep_ms(int milliseconds) {
   Sleep(milliseconds);
