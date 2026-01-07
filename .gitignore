@@ -1,0 +1,6 @@
+*bin*
+*.exe
+*.obj
+*.o
+*.dSYM
+*trb2sdk*

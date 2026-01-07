@@ -20,6 +20,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <arpa/inet.h>
+#include <endian.h>
 
 #ifdef _WIN32  // Windows includes
 #include <direct.h>
@@ -462,10 +464,11 @@ static int cmd(struct ctx *ctx, uint8_t op, void *buf, uint16_t len,
   uint8_t tmp[8 + 16384];     // 8 is size of the header
   memset(tmp, 0, 8);          // Clear header
   tmp[1] = op;                // Operation
-  memcpy(&tmp[2], &len, 2);   // Length
-  memcpy(&tmp[4], &cs, 4);    // Checksum
+  uint16_t len_le = htole16(len);
+  memcpy(&tmp[2], &len_le, 2);   // Length
+  uint32_t cs_le = htole32(cs);
+  memcpy(&tmp[4], &cs_le, 4);    // Checksum
   memcpy(&tmp[8], buf, len);  // Data
-
   slip_send(tmp, 8 + len, uart_tx, &ctx->fd);        // Send command
   if (ctx->verbose) dump(cmdstr(op), tmp, 8 + len);  // Hexdump if required
 
@@ -475,7 +478,7 @@ static int cmd(struct ctx *ctx, uint8_t op, void *buf, uint16_t len,
     if (!(ready & READY_SERIAL)) return 1;           // Interrupted, fail
     n = read(ctx->fd, tmp, sizeof(tmp));             // Read from a device
     if (n <= 0) fail("Serial line closed\n");        // Doh. Unplugged maybe?
-    // if (ctx->verbose) dump("--RAW_RESPONSE:", tmp, n);
+    if (ctx->verbose) dump("--RAW_RESPONSE:", tmp, n);
     for (i = 0; i < n; i++) {
       size_t r = slip_recv(tmp[i], &ctx->slip);  // Pass to SLIP state machine
       // if (r == 0 && ctx->slip.mode == 0) putchar(tmp[i]);  // In serial mode
@@ -494,8 +497,15 @@ static int cmd(struct ctx *ctx, uint8_t op, void *buf, uint16_t len,
 }
 
 static int read32(struct ctx *ctx, uint32_t addr, uint32_t *value) {
-  int ok = cmd(ctx, 10, &addr, sizeof(addr), 0, 100);
-  if (ok == 0 && value != NULL) *value = *(uint32_t *) &ctx->slip.buf[4];
+  uint32_t addr_le = htole32(addr);
+  int ok = cmd(ctx, 10, &addr_le, sizeof(addr_le), 0, 500);
+  if (ok == 0 && value != NULL)
+  {
+    uint32_t tmp;
+    //Copy bytes to a local variable (Fixes Alignment & Aliasing)
+    memcpy(&tmp, &ctx->slip.buf[4], sizeof(tmp)); 
+    *value = le32toh(tmp);  
+  }
   return ok;
 }
 
@@ -632,12 +642,13 @@ static void readmem(struct ctx *ctx, const char **args) {
 
 static void spiattach(struct ctx *ctx) {
   uint32_t d3[] = {0, 0};
-  uint32_t d4[] = {0, 4 * 1024 * 1024, 65536, 4096, 256, 0xffff};
+  uint32_t d4[] = {0, htole32(4 * 1024 * 1024), htole32(65536), htole32(4096), htole32(256), htole32(0xffff)};
   if (ctx->fspi != NULL) {
     // 6,17,8,11,16 -> 0xb408446, like esptool does
     unsigned a = 0, b = 0, c = 0, d = 0, e = 0;
     sscanf(ctx->fspi, "%u,%u,%u,%u,%u", &a, &b, &c, &e, &d);
     d3[0] = a | (b << 6) | (c << 12) | (d << 18) | (e << 24);
+    d3[0] = htole32(d3[0]);
     // printf("-----> %u,%u,%u,%u,%u -> %x\n", a, b, c, d, e, pins);
   }
   if (cmd(ctx, 13, d3, sizeof(d3), 0, 250)) fail("SPI_ATTACH failed\n");
@@ -659,7 +670,8 @@ static void readflash(struct ctx *ctx, const char **args) {
     while (i < size) {
       uint32_t bs = size - i > 64 ? 64 : size - i;
       uint32_t d[] = {base + i, bs};
-      if (cmd(ctx, 14, d, sizeof(d), 0, 500) != 0) {
+      uint32_t d_le[] = {htole32(d[0]), htole32(d[1])};
+      if (cmd(ctx, 14, d_le, sizeof(d), 0, 500) != 0) {
         printf("Error: flash read @ addr %#x\n", base + i);
         break;
       } else {
@@ -791,13 +803,12 @@ static void flashbin(struct ctx *ctx, uint16_t flash_params,
   rewind(fp);
 
   memset(buf, 0, hs);  // Clear them
-
   printf("Erasing %d bytes @ %#x", size, flash_offset);
   fflush(stdout);
 
   {
-    uint32_t num_blocks = (size + block_size - 1) / block_size;
-    uint32_t d1[] = {size, num_blocks, block_size, flash_offset, encrypted};
+    uint32_t num_blocks = htole32((size + block_size - 1) / block_size);
+    uint32_t d1[] = {htole32(size), htole32(num_blocks), htole32(block_size), htole32(flash_offset), htole32(encrypted)};
     uint16_t d1size = sizeof(d1) - 4;
     // Flash begin. S2, S3, C3 chips have an extra 5th parameter.
     if (ctx->chip.id == CHIP_ID_ESP32_S2 ||
@@ -821,8 +832,8 @@ static void flashbin(struct ctx *ctx, uint16_t flash_params,
     // Embed flash params into a bootloader image
     if (seq == 0 && flash_offset == ctx->chip.bla) {
       if (flash_params != 0) {
-        buf[hs + 2] = (uint8_t) ((flash_params >> 8) & 255);
-        buf[hs + 3] = (uint8_t) (flash_params & 255);
+        buf[hs + 2] = (uint8_t) (((flash_params) >> 8) & 255);
+        buf[hs + 3] = (uint8_t) ((flash_params) & 255);
       }
       // Set chip type in the extended header at offset 4.
       // Common header is 8, plus extended header offset 4 = 12
@@ -839,8 +850,10 @@ static void flashbin(struct ctx *ctx, uint16_t flash_params,
     // n = ALIGN(n, block_size);
 
     // Flash write
-    tmp = n, memcpy(&buf[0], &tmp, 4);      // Set buffer size
-    tmp = seq++, memcpy(&buf[4], &tmp, 4);  // Set sequence number
+    tmp = htole32(n);
+    memcpy(&buf[0], &tmp, 4);      // Set buffer size
+    tmp = htole32(seq++);
+    memcpy(&buf[4], &tmp, 4);  // Set sequence number
     cs = checksum(buf + hs, n);
     if (cmd(ctx, 3, buf, (uint16_t) (hs + n), cs, 1500))
       fail("flash_data failed\n");
@@ -878,7 +891,7 @@ static void flash(struct ctx *ctx, const char **args) {
     // Load first word from the bootloader - flash params are encoded there,
     // in the last 2 bytes, see README.md in the repo root
     if (ctx->fpar == NULL) {
-      uint32_t d5[] = {ctx->chip.bla, 16};
+      uint32_t d5[] = {htole32(ctx->chip.bla), htole32(16)};
       if (cmd(ctx, 14, d5, sizeof(d5), 0, 2000) != 0) {
         printf("Error: can't read bootloader @ addr %#x\n", ctx->chip.bla);
       } else if (ctx->slip.buf[8] != 0xe9) {
