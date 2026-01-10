@@ -4,3 +4,4 @@
 *.o
 *.dSYM
 *trb2sdk*
+esputil-mips24kc
