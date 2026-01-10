@@ -936,9 +936,10 @@ static void flash(struct ctx *ctx, const char **args) {
   }
 
   {
-    // Flash end
-    uint32_t d3[] = {0};  // 0: reboot, 1: run user code
-    if (cmd(ctx, 4, d3, sizeof(d3), 0, 250)) fail("flash_end failed\n");
+    // Flash end - disabled since it is not mandatory
+    // uint32_t d3[] = {0};  // 0: reboot, 1: run user code
+    // if (cmd(ctx, 4, d3, sizeof(d3), 0, 250)) fail("flash_end failed\n");
+    printf("Flashing complete.\n");
   }
 
   hard_reset(ctx->fd);
