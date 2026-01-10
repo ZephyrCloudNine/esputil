@@ -478,7 +478,7 @@ static int cmd(struct ctx *ctx, uint8_t op, void *buf, uint16_t len,
     if (!(ready & READY_SERIAL)) return 1;           // Interrupted, fail
     n = read(ctx->fd, tmp, sizeof(tmp));             // Read from a device
     if (n <= 0) fail("Serial line closed\n");        // Doh. Unplugged maybe?
-    if (ctx->verbose) dump("--RAW_RESPONSE:", tmp, n);
+    // if (ctx->verbose) dump("--RAW_RESPONSE:", tmp, n);
     for (i = 0; i < n; i++) {
       size_t r = slip_recv(tmp[i], &ctx->slip);  // Pass to SLIP state machine
       // if (r == 0 && ctx->slip.mode == 0) putchar(tmp[i]);  // In serial mode
